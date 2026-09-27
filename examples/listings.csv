@@ -1,0 +1,3 @@
+item_id,title,url,model,condition,price_gbp,shipping_gbp,includes_dock,includes_charger,includes_joycons,working
+DEMO-001,DEMO ONLY - Switch OLED HEG-001 complete bundle,https://example.test/DEMO-001,HEG-001,Used - Good,120.00,5.00,true,true,true,true
+DEMO-002,DEMO ONLY - Switch OLED without dock,https://example.test/DEMO-002,HEG-001,Used - Good,95.00,5.00,false,true,true,true

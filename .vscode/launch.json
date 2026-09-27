@@ -1,0 +1,111 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "eBay Interrogator: Scan CSVs",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ebay_interrogator",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "args": [
+                "scan",
+                "--listings", "${input:listingCsv}",
+                "--comps", "${input:compsCsv}",
+                "--fee-percent", "${input:feePercent}",
+                "--fixed-fee-gbp", "${input:fixedFee}",
+                "--outbound-postage-gbp", "${input:outboundPostage}",
+                "--packaging-gbp", "${input:packagingCost}",
+                "--buffer-gbp", "${input:uncertaintyBuffer}",
+                "--output", "${workspaceFolder}/candidates.csv"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "eBay Interrogator: Browse Sandbox",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ebay_interrogator",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "EBAY_CLIENT_ID": "${input:ebayClientId}",
+                "EBAY_CLIENT_SECRET": "${input:ebayClientSecret}"
+            },
+            "args": [
+                "browse",
+                "--environment", "sandbox",
+                "--marketplace", "EBAY_GB",
+                "--query", "${input:browseQuery}",
+                "--limit", "20",
+                "--output", "${workspaceFolder}/active-listings.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ],
+    "inputs": [
+        {
+            "id": "listingCsv",
+            "type": "promptString",
+            "description": "Path to active listings CSV",
+            "default": "examples/listings.csv"
+        },
+        {
+            "id": "compsCsv",
+            "type": "promptString",
+            "description": "Path to sold comparisons CSV",
+            "default": "examples/sold-comparables.csv"
+        },
+        {
+            "id": "feePercent",
+            "type": "promptString",
+            "description": "Estimated marketplace fee percentage",
+            "default": "13"
+        },
+        {
+            "id": "fixedFee",
+            "type": "promptString",
+            "description": "Estimated fixed fee in GBP",
+            "default": "0.30"
+        },
+        {
+            "id": "outboundPostage",
+            "type": "promptString",
+            "description": "Estimated outbound postage in GBP",
+            "default": "4.50"
+        },
+        {
+            "id": "packagingCost",
+            "type": "promptString",
+            "description": "Estimated packaging cost in GBP",
+            "default": "0.50"
+        },
+        {
+            "id": "uncertaintyBuffer",
+            "type": "promptString",
+            "description": "Profit buffer in GBP",
+            "default": "5"
+        },
+        {
+            "id": "ebayClientId",
+            "type": "promptString",
+            "description": "eBay Sandbox Application (Client ID)"
+        },
+        {
+            "id": "ebayClientSecret",
+            "type": "promptString",
+            "description": "eBay Sandbox Application (Client Secret)",
+            "password": true
+        },
+        {
+            "id": "browseQuery",
+            "type": "promptString",
+            "description": "Search eBay UK active listings",
+            "default": "Nintendo Switch OLED HEG-001"
+        }
+    ]
+}
