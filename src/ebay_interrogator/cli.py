@@ -9,6 +9,7 @@ from ebay_interrogator.csv_data import (
     CsvDataError,
     read_active_listings,
     read_sold_comparables,
+    write_browse_listing_draft,
     write_assessments,
 )
 from ebay_interrogator.ebay_api import EbayApiError, EbayBrowseClient
@@ -55,7 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     browse = subparsers.add_parser(
         "browse",
-        help="search active eBay listings and save the raw API response",
+        help="search active eBay listings and save raw and review data",
     )
     browse.add_argument(
         "--query", required=True, help="eBay listing search text"
@@ -72,6 +73,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("active-listings.json"),
+    )
+    browse.add_argument(
+        "--draft-csv",
+        type=Path,
+        help="write a manual-review CSV draft from the Browse response",
     )
     return parser
 
@@ -137,6 +143,12 @@ def _browse(args: argparse.Namespace) -> int:
     item_count = len(summaries) if isinstance(summaries, list) else 0
     print(f"Retrieved {item_count} active listing(s).")
     print(f"Saved raw Browse API response to {args.output}")
+    if args.draft_csv:
+        draft_count = write_browse_listing_draft(args.draft_csv, response)
+        print(
+            f"Wrote {draft_count} listing(s) to review CSV "
+            f"at {args.draft_csv}"
+        )
     return 0
 
 

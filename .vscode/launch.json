@@ -41,7 +41,8 @@
                 "--marketplace", "EBAY_GB",
                 "--query", "${input:browseQuery}",
                 "--limit", "20",
-                "--output", "${workspaceFolder}/active-listings.json"
+                "--output", "${workspaceFolder}/active-listings.json",
+                "--draft-csv", "${workspaceFolder}/active-listings-draft.csv"
             ],
             "console": "integratedTerminal",
             "justMyCode": true

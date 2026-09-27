@@ -17,7 +17,7 @@ class CsvDataError(ValueError):
 
 T = TypeVar("T")
 
-ACTIVE_FIELDS = {
+ACTIVE_CSV_FIELDS = [
     "item_id",
     "title",
     "url",
@@ -29,7 +29,8 @@ ACTIVE_FIELDS = {
     "includes_charger",
     "includes_joycons",
     "working",
-}
+]
+ACTIVE_FIELDS = set(ACTIVE_CSV_FIELDS)
 SOLD_FIELDS = {
     "model",
     "condition",
@@ -130,6 +131,73 @@ def _boolean(
     raise CsvDataError(
         f"{path}:{line_number}: {field} must be true/false, yes/no, or 1/0"
     )
+
+
+def _browse_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _browse_money(value: object) -> str:
+    if not isinstance(value, dict) or value.get("currency") != "GBP":
+        return ""
+    amount_value = value.get("value")
+    if amount_value is None or isinstance(amount_value, bool):
+        return ""
+    try:
+        amount = Decimal(str(amount_value))
+    except InvalidOperation:
+        return ""
+    if not amount.is_finite() or amount < 0:
+        return ""
+    return format(amount, "f")
+
+
+def _browse_shipping(options: object) -> str:
+    if not isinstance(options, list) or len(options) != 1:
+        return ""
+    option = options[0]
+    if not isinstance(option, dict):
+        return ""
+    return _browse_money(option.get("shippingCost"))
+
+
+def write_browse_listing_draft(
+    path: Path,
+    response: dict[str, object],
+) -> int:
+    summaries = response.get("itemSummaries", [])
+    if not isinstance(summaries, list) or any(
+        not isinstance(summary, dict) for summary in summaries
+    ):
+        raise CsvDataError(
+            "Browse API response contains invalid item summaries"
+        )
+
+    try:
+        with path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=ACTIVE_CSV_FIELDS)
+            writer.writeheader()
+            for summary in summaries:
+                writer.writerow(
+                    {
+                        "item_id": _browse_text(summary.get("itemId")),
+                        "title": _browse_text(summary.get("title")),
+                        "url": _browse_text(summary.get("itemWebUrl")),
+                        "model": "",
+                        "condition": _browse_text(summary.get("condition")),
+                        "price_gbp": _browse_money(summary.get("price")),
+                        "shipping_gbp": _browse_shipping(
+                            summary.get("shippingOptions")
+                        ),
+                        "includes_dock": "",
+                        "includes_charger": "",
+                        "includes_joycons": "",
+                        "working": "",
+                    }
+                )
+    except OSError as error:
+        raise CsvDataError(f"{path}: {error}") from error
+    return len(summaries)
 
 
 def _parse_rows(

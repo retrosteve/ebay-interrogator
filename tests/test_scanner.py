@@ -1,12 +1,18 @@
 import csv
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ebay_interrogator.cli import main
-from ebay_interrogator.csv_data import CsvDataError, read_active_listings
+from ebay_interrogator.csv_data import (
+    CsvDataError,
+    read_active_listings,
+    write_browse_listing_draft,
+)
 from ebay_interrogator.models import ActiveListing, SoldComparable
 from ebay_interrogator.pricing import assess_listing
 
@@ -110,6 +116,118 @@ class PricingTests(unittest.TestCase):
 
 
 class CsvAndCliTests(unittest.TestCase):
+    @patch("ebay_interrogator.cli.EbayBrowseClient.from_environment")
+    def test_browse_command_writes_raw_and_review_csv(
+        self,
+        mock_from_environment,
+    ) -> None:
+        response = {
+            "total": 1,
+            "itemSummaries": [
+                {
+                    "itemId": "v1|123|0",
+                    "title": "Switch OLED bundle",
+                    "itemWebUrl": "https://example.test/item/123",
+                    "condition": "Used",
+                    "price": {"value": "115.00", "currency": "GBP"},
+                    "shippingOptions": [
+                        {
+                            "shippingCost": {
+                                "value": "4.50",
+                                "currency": "GBP",
+                            }
+                        }
+                    ],
+                }
+            ],
+        }
+        mock_from_environment.return_value.search_items.return_value = response
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_path = root / "response.json"
+            draft_path = root / "active-listings-draft.csv"
+            exit_code = main(
+                [
+                    "browse",
+                    "--query",
+                    "Switch OLED",
+                    "--output",
+                    str(raw_path),
+                    "--draft-csv",
+                    str(draft_path),
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                json.loads(raw_path.read_text(encoding="utf-8")),
+                response,
+            )
+            with draft_path.open(newline="", encoding="utf-8") as csv_file:
+                row = next(csv.DictReader(csv_file))
+            self.assertEqual(row["item_id"], "v1|123|0")
+            self.assertEqual(row["price_gbp"], "115.00")
+            self.assertEqual(row["model"], "")
+
+    def test_browse_draft_leaves_unverified_fields_blank(self) -> None:
+        response = {
+            "itemSummaries": [
+                {
+                    "itemId": "v1|123|0",
+                    "title": "Switch OLED bundle",
+                    "itemWebUrl": "https://example.test/item/123",
+                    "condition": "Used",
+                    "price": {"value": "115.00", "currency": "GBP"},
+                    "shippingOptions": [
+                        {
+                            "shippingCost": {
+                                "value": "4.50",
+                                "currency": "GBP",
+                            }
+                        }
+                    ],
+                },
+                {
+                    "itemId": "v1|456|0",
+                    "title": "Console listing",
+                    "itemWebUrl": "https://example.test/item/456",
+                    "condition": "Used",
+                    "price": {"value": "99.00", "currency": "EUR"},
+                    "shippingOptions": [
+                        {
+                            "shippingCost": {
+                                "value": "4.00",
+                                "currency": "GBP",
+                            }
+                        },
+                        {
+                            "shippingCost": {
+                                "value": "6.00",
+                                "currency": "GBP",
+                            }
+                        },
+                    ],
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "active-listings-draft.csv"
+            count = write_browse_listing_draft(path, response)
+            with path.open(newline="", encoding="utf-8") as csv_file:
+                rows = list(csv.DictReader(csv_file))
+
+            self.assertEqual(count, 2)
+            self.assertEqual(rows[0]["price_gbp"], "115.00")
+            self.assertEqual(rows[0]["shipping_gbp"], "4.50")
+            self.assertEqual(rows[0]["model"], "")
+            self.assertEqual(rows[0]["includes_dock"], "")
+            self.assertEqual(rows[0]["working"], "")
+            self.assertEqual(rows[1]["price_gbp"], "")
+            self.assertEqual(rows[1]["shipping_gbp"], "")
+            with self.assertRaisesRegex(CsvDataError, "model cannot be empty"):
+                read_active_listings(path)
+
     def test_rejects_missing_csv_columns(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "listings.csv"

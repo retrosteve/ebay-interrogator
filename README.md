@@ -1,9 +1,10 @@
 # eBay Interrogator
 
 A Python command-line tool for ranking complete, working Nintendo Switch OLED
-(HEG-001) listings on eBay UK by estimated resale profit. The first version
-reads active listings and sold comparisons from CSV files; it does not scrape
-eBay or purchase items.
+(HEG-001) listings on eBay UK by estimated resale profit. It reads active
+listings and sold comparisons from CSV files, and can search active listings
+through the eBay Browse API to create a manual-review CSV draft. Sold
+comparisons remain CSV-based; the tool does not purchase items.
 
 ## Getting started
 
@@ -68,14 +69,21 @@ After your developer account is approved, create Sandbox application keys in
 the eBay Developer Portal. Use the VS Code **eBay Interrogator: Browse Sandbox**
 launch profile to enter the Client ID, masked Client Secret, and search query.
 It requests up to 20 active eBay UK results and writes the raw response to
-`active-listings.json`, which is ignored by Git. The Browse API integration uses
-application OAuth credentials from the launch prompt and makes no request until
-you start this profile.
+`active-listings.json`, which is ignored by Git. It also writes
+`active-listings-draft.csv`, an ignored manual-review draft.
 
-The Browse command retrieves active listings only; it does not yet convert raw
-results into the scanner's CSV format. Sold comparisons remain CSV-based until
-eBay confirms access to a permitted sold-history source. Do not put Production
-keys in the Sandbox profile or commit credentials to the repository.
+The draft maps listing ID, title, URL, condition, and unambiguous GBP price and
+shipping values. It leaves model, bundle contents, and working status blank
+because the Browse response does not verify them. Non-GBP prices and ambiguous
+shipping options are also left blank. Review and complete those fields before
+using the draft with `scan`; the scanner rejects incomplete rows. The Browse API
+integration uses application OAuth credentials from the launch prompt and makes
+no request until you start this profile.
+
+The Browse command retrieves active listings only. Sold comparisons remain
+CSV-based until eBay confirms access to a permitted sold-history source. Do not
+put Production keys in the Sandbox profile or commit credentials to the
+repository.
 
 The VS Code Run and Debug profile defaults to the CSV files under `examples/`.
 They contain synthetic demo values only, not live listings or real sold prices.
