@@ -46,6 +46,29 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "eBay Interrogator: Browse Production (read-only)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ebay_interrogator",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "EBAY_CLIENT_ID": "${input:ebayProductionClientId}",
+                "EBAY_CLIENT_SECRET": "${input:ebayProductionClientSecret}"
+            },
+            "args": [
+                "browse",
+                "--environment", "production",
+                "--marketplace", "EBAY_GB",
+                "--query", "${input:browseQuery}",
+                "--limit", "20",
+                "--output", "${workspaceFolder}/active-listings-production.json",
+                "--draft-csv", "${workspaceFolder}/active-listings-production-draft.csv"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ],
     "inputs": [
@@ -100,6 +123,17 @@
             "id": "ebayClientSecret",
             "type": "promptString",
             "description": "eBay Sandbox Application (Client Secret)",
+            "password": true
+        },
+        {
+            "id": "ebayProductionClientId",
+            "type": "promptString",
+            "description": "eBay Production Application (Client ID)"
+        },
+        {
+            "id": "ebayProductionClientSecret",
+            "type": "promptString",
+            "description": "eBay Production Application (Client Secret)",
             "password": true
         },
         {

@@ -80,6 +80,14 @@ using the draft with `scan`; the scanner rejects incomplete rows. The Browse API
 integration uses application OAuth credentials from the launch prompt and makes
 no request until you start this profile.
 
+For live inventory, first ensure your Production keyset is enabled for the Browse
+API. Then use **eBay Interrogator: Browse Production (read-only)** and enter the
+Production Client ID and masked Client Secret at its prompts. This profile makes
+only authentication and Browse search requests; it does not create or change
+listings. It writes `active-listings-production.json` and
+`active-listings-production-draft.csv`, both ignored by Git. Do not enter
+Production keys into the Sandbox profile.
+
 The Browse command retrieves active listings only. Sold comparisons remain
 CSV-based until eBay confirms access to a permitted sold-history source. Do not
 put Production keys in the Sandbox profile or commit credentials to the

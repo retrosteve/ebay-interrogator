@@ -41,7 +41,7 @@ htmlcov/
 
 # Live API output
 active-listings*.json
-active-listings-draft.csv
+active-listings*-draft.csv
 
 # Generated scan results
 candidates.csv
