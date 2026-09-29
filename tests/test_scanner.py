@@ -128,7 +128,7 @@ class CsvAndCliTests(unittest.TestCase):
                     "itemId": "v1|123|0",
                     "title": "Switch OLED bundle",
                     "itemWebUrl": "https://example.test/item/123",
-                    "condition": "Used",
+                    "condition": "New",
                     "price": {"value": "115.00", "currency": "GBP"},
                     "shippingOptions": [
                         {
@@ -142,6 +142,8 @@ class CsvAndCliTests(unittest.TestCase):
             ],
         }
         mock_from_environment.return_value.search_items.return_value = response
+        mock_client = mock_from_environment.return_value
+        mock_client.add_item_descriptions.return_value = response
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -152,6 +154,10 @@ class CsvAndCliTests(unittest.TestCase):
                     "browse",
                     "--query",
                     "Switch OLED",
+                    "--category-id",
+                    "139971",
+                    "--sort",
+                    "price",
                     "--output",
                     str(raw_path),
                     "--draft-csv",
@@ -160,6 +166,19 @@ class CsvAndCliTests(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 0)
+            mock_search_items = mock_from_environment.return_value.search_items
+            mock_search_items.assert_called_once_with(
+                "Switch OLED",
+                marketplace="EBAY_GB",
+                limit=50,
+                offset=0,
+                category_id="139971",
+                sort="price",
+            )
+            mock_client.add_item_descriptions.assert_called_once_with(
+                response,
+                marketplace="EBAY_GB",
+            )
             self.assertEqual(
                 json.loads(raw_path.read_text(encoding="utf-8")),
                 response,
@@ -169,6 +188,44 @@ class CsvAndCliTests(unittest.TestCase):
             self.assertEqual(row["item_id"], "v1|123|0")
             self.assertEqual(row["price_gbp"], "115.00")
             self.assertEqual(row["model"], "")
+
+    @patch("ebay_interrogator.cli.EbayBrowseClient.from_environment")
+    def test_skips_description_requests_for_used_listings(
+        self,
+        mock_from_environment,
+    ) -> None:
+        response = {
+            "itemSummaries": [
+                {
+                    "itemId": "used-item",
+                    "title": "Switch OLED console",
+                    "condition": "Used",
+                }
+            ]
+        }
+        mock_client = mock_from_environment.return_value
+        mock_client.search_items.return_value = response
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            draft_path = root / "active-listings-draft.csv"
+            exit_code = main(
+                [
+                    "browse",
+                    "--query",
+                    "Switch OLED",
+                    "--output",
+                    str(root / "response.json"),
+                    "--draft-csv",
+                    str(draft_path),
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            mock_client.add_item_descriptions.assert_not_called()
+            with draft_path.open(newline="", encoding="utf-8") as csv_file:
+                row = next(csv.DictReader(csv_file))
+            self.assertEqual(row["triage_status"], "excluded")
 
     def test_browse_draft_leaves_unverified_fields_blank(self) -> None:
         response = {
@@ -227,6 +284,441 @@ class CsvAndCliTests(unittest.TestCase):
             self.assertEqual(rows[1]["shipping_gbp"], "")
             with self.assertRaisesRegex(CsvDataError, "model cannot be empty"):
                 read_active_listings(path)
+
+    def test_browse_draft_triages_console_risk_and_accessory_signals(
+        self,
+    ) -> None:
+        response = {
+            "itemSummaries": [
+                {
+                    "itemId": "console",
+                    "title": (
+                        "Nintendo Switch OLED Model HEG-001 Handheld Console"
+                    ),
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "worn",
+                    "title": (
+                        "Nintendo Switch OLED Model HEG-001 Console "
+                        "with Worn JoyCons"
+                    ),
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "tablet-only",
+                    "title": "Nintendo Switch OLED console Tablet Only HEG001",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "unit-only",
+                    "title": "Nintendo Switch OLED HEG-001 Console UNIT ONLY",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "console-only",
+                    "title": "Nintendo Switch OLED HEG-001 Console Only",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "no-cable",
+                    "title": (
+                        "Nintendo Switch OLED HEG-001 Console With Dock "
+                        "and Grip, No Cable"
+                    ),
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "screen-only",
+                    "title": (
+                        "Nintendo Switch OLED Console HEG-001 "
+                        "Tablet Screen Only Tested Working"
+                    ),
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "not-oled",
+                    "title": "Nintendo Switch (not Oled)",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "faulty-condition",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "For parts or not working",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "condition-used",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "Used",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "condition-like-new",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "Like New",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "condition-open-box",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "Open box",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "condition-opened-never-used",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "Opened - never used",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "condition-missing",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                },
+                {
+                    "itemId": "description-missing-dock",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "<p>Dock not included. Charger included and "
+                        "Joy-Cons included. Untested.</p>"
+                        "<script>Dock included and working</script>"
+                    ),
+                },
+                {
+                    "itemId": "description-positive",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "<p>Includes dock, AC charger and Joy-Cons. "
+                        "Tested working.</p>"
+                    ),
+                },
+                {
+                    "itemId": "description-unavailable",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "unavailable",
+                },
+                {
+                    "itemId": "description-negated-risk",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Not faulty, not broken, no Joy-Con drift."
+                    ),
+                },
+                {
+                    "itemId": "description-expanded-faults",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Will not charge. Black screen, buttons not "
+                        "responding, overheating, and liquid damage."
+                    ),
+                },
+                {
+                    "itemId": "description-negated-expanded-faults",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "No black screen or water damage. Not banned "
+                        "online; no stick drift."
+                    ),
+                },
+                {
+                    "itemId": "description-tablet-only",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": "Tablet only; no power supply.",
+                },
+                {
+                    "itemId": "description-no-charging-lead",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Tested fully working. Does not include any further "
+                        "accessories or leads. No charging lead included."
+                    ),
+                },
+                {
+                    "itemId": "description-wear-and-missing-originals",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "condition": "Used - Grade B",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Moderate wear, scratches and missing rubber grips. "
+                        "No HDMI cable. Joy-Con straps are missing."
+                    ),
+                },
+                {
+                    "itemId": "description-good-without-box",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Great condition, tested working. Dock, charger, "
+                        "Joy-Cons and HDMI cable included. Box not included."
+                    ),
+                },
+                {
+                    "itemId": "description-good-boxed",
+                    "title": "Nintendo Switch OLED HEG-001 Console",
+                    "leafCategoryIds": ["139971"],
+                    "listingDescriptionStatus": "available",
+                    "listingDescription": (
+                        "Very good condition, original box included."
+                    ),
+                },
+                {
+                    "itemId": "screws",
+                    "title": (
+                        "Nintendo Switch OLED (HEG-001) Console "
+                        "Full Complete Screw Screws Set"
+                    ),
+                    "leafCategoryIds": ["171833"],
+                },
+            ]
+        }
+        for summary in response["itemSummaries"]:
+            if summary["itemId"] != "condition-missing":
+                summary.setdefault("condition", "New")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "active-listings-draft.csv"
+            write_browse_listing_draft(path, response)
+            with path.open(newline="", encoding="utf-8") as csv_file:
+                rows = {
+                    row["item_id"]: row
+                    for row in csv.DictReader(csv_file)
+                }
+
+        self.assertEqual(rows["console"]["model"], "HEG-001")
+        self.assertEqual(
+            rows["console"]["triage_status"], "verification_needed"
+        )
+        self.assertIn(
+            "verify complete dock, charger, and Joy-Con bundle",
+            rows["console"]["triage_signals"],
+        )
+        self.assertIn(
+            "verify working condition",
+            rows["console"]["triage_signals"],
+        )
+        self.assertEqual(rows["console"]["quality_score"], "0")
+        self.assertIn(
+            "no description evidence",
+            rows["console"]["quality_signals"],
+        )
+        self.assertEqual(
+            rows["worn"]["triage_status"], "excluded"
+        )
+        self.assertIn("exclusion cue: worn", rows["worn"]["triage_signals"])
+        for item_id, cue in (
+            ("tablet-only", "tablet only"),
+            ("unit-only", "unit only"),
+            ("console-only", "console only"),
+            ("screen-only", "screen only"),
+            ("no-cable", "no cable"),
+        ):
+            self.assertEqual(
+                rows[item_id]["triage_status"], "excluded"
+            )
+            self.assertIn(
+                f"exclusion cue: {cue}",
+                rows[item_id]["triage_signals"],
+            )
+        self.assertEqual(rows["screws"]["model"], "")
+        self.assertEqual(
+            rows["screws"]["triage_status"], "excluded"
+        )
+        self.assertIn(
+            "accessory cue: screws",
+            rows["screws"]["triage_signals"],
+        )
+        self.assertEqual(
+            rows["not-oled"]["triage_status"], "excluded"
+        )
+        self.assertIn(
+            "target mismatch cue: not oled",
+            rows["not-oled"]["triage_signals"],
+        )
+        self.assertEqual(rows["not-oled"]["model"], "")
+        self.assertEqual(
+            rows["faulty-condition"]["triage_status"], "excluded"
+        )
+        for item_id in (
+            "condition-used",
+            "condition-missing",
+        ):
+            self.assertEqual(rows[item_id]["triage_status"], "excluded")
+        for item_id in (
+            "condition-like-new",
+            "condition-open-box",
+            "condition-opened-never-used",
+        ):
+            self.assertEqual(
+                rows[item_id]["triage_status"], "verification_needed"
+            )
+        self.assertIn(
+            "eligible condition: Like New",
+            rows["condition-like-new"]["triage_signals"],
+        )
+        self.assertIn(
+            "eligible condition: New",
+            rows["console"]["triage_signals"],
+        )
+        self.assertIn(
+            "exclusion cue: not working",
+            rows["faulty-condition"]["triage_signals"],
+        )
+        self.assertEqual(
+            rows["description-missing-dock"]["triage_status"], "excluded"
+        )
+        self.assertIn(
+            "description says dock missing",
+            rows["description-missing-dock"]["description_signals"],
+        )
+        self.assertIn(
+            "description exclusion cue: missing dock",
+            rows["description-missing-dock"]["triage_signals"],
+        )
+        self.assertIn(
+            "description risk cue: untested",
+            rows["description-missing-dock"]["description_signals"],
+        )
+        self.assertIn(
+            "description exclusion cue: untested",
+            rows["description-missing-dock"]["triage_signals"],
+        )
+        self.assertNotIn(
+            "description mentions dock",
+            rows["description-missing-dock"]["description_signals"],
+        )
+        self.assertEqual(
+            rows["description-positive"]["triage_status"],
+            "verification_needed",
+        )
+        self.assertIn(
+            "description mentions dock",
+            rows["description-positive"]["description_signals"],
+        )
+        self.assertIn(
+            "description mentions tested/working",
+            rows["description-positive"]["description_signals"],
+        )
+        self.assertEqual(
+            rows["description-positive"]["quality_score"], "42"
+        )
+        self.assertIn(
+            "seller claims dock included (+12)",
+            rows["description-positive"]["quality_signals"],
+        )
+        self.assertEqual(
+            rows["description-unavailable"]["description_status"],
+            "unavailable",
+        )
+        self.assertEqual(
+            rows["description-negated-risk"]["triage_status"],
+            "verification_needed",
+        )
+        self.assertNotIn(
+            "description exclusion cue",
+            rows["description-negated-risk"]["triage_signals"],
+        )
+        self.assertEqual(
+            rows["description-expanded-faults"]["triage_status"],
+            "excluded",
+        )
+        for cue in (
+            "will not charge",
+            "black screen",
+            "buttons not responding",
+            "overheating",
+            "liquid damage",
+        ):
+            self.assertIn(
+                f"description risk cue: {cue}",
+                rows["description-expanded-faults"]["description_signals"],
+            )
+        self.assertEqual(
+            rows["description-negated-expanded-faults"]["triage_status"],
+            "verification_needed",
+        )
+        self.assertNotIn(
+            "description exclusion cue",
+            rows["description-negated-expanded-faults"]["triage_signals"],
+        )
+        self.assertEqual(
+            rows["description-tablet-only"]["triage_status"], "excluded"
+        )
+        self.assertEqual(
+            rows["description-no-charging-lead"]["triage_status"],
+            "excluded",
+        )
+        self.assertIn(
+            "description says charger missing",
+            rows["description-no-charging-lead"]["description_signals"],
+        )
+        self.assertEqual(
+            rows["description-wear-and-missing-originals"]["triage_status"],
+            "excluded",
+        )
+        for cue in (
+            "moderate wear",
+            "scratches",
+            "missing rubber grips",
+        ):
+            self.assertIn(
+                f"description risk cue: {cue}",
+                rows["description-wear-and-missing-originals"][
+                    "description_signals"
+                ],
+            )
+        for label in ("HDMI cable", "Joy-Con accessories"):
+            self.assertIn(
+                f"description says {label} missing",
+                rows["description-wear-and-missing-originals"][
+                    "description_signals"
+                ],
+            )
+        self.assertEqual(
+            rows["description-good-without-box"]["triage_status"],
+            "verification_needed",
+        )
+        self.assertIn(
+            "description says box not included",
+            rows["description-good-without-box"]["description_signals"],
+        )
+        self.assertEqual(
+            rows["description-good-boxed"]["triage_status"],
+            "verification_needed",
+        )
+        self.assertIn(
+            "description mentions box",
+            rows["description-good-boxed"]["description_signals"],
+        )
+        self.assertEqual(
+            rows["description-good-without-box"]["quality_score"], "77"
+        )
+        self.assertEqual(
+            rows["description-good-boxed"]["quality_score"], "40"
+        )
+        self.assertEqual(rows["worn"]["quality_score"], "")
+        for row in rows.values():
+            self.assertEqual(row["includes_dock"], "")
+            self.assertEqual(row["includes_charger"], "")
+            self.assertEqual(row["includes_joycons"], "")
+            self.assertEqual(row["working"], "")
 
     def test_rejects_missing_csv_columns(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

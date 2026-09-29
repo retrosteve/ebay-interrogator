@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from ebay_interrogator.csv_data import (
     CsvDataError,
+    is_browse_condition_eligible,
     read_active_listings,
     read_sold_comparables,
     write_browse_listing_draft,
@@ -67,6 +68,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default="sandbox",
     )
     browse.add_argument("--marketplace", default="EBAY_GB")
+    browse.add_argument("--category-id")
+    browse.add_argument(
+        "--sort",
+        choices=(
+            "price",
+            "-price",
+            "distance",
+            "newlyListed",
+            "endingSoonest",
+        ),
+    )
     browse.add_argument("--limit", type=int, default=50)
     browse.add_argument("--offset", type=int, default=0)
     browse.add_argument(
@@ -134,6 +146,8 @@ def _browse(args: argparse.Namespace) -> int:
         marketplace=args.marketplace,
         limit=args.limit,
         offset=args.offset,
+        category_id=args.category_id,
+        sort=args.sort,
     )
     args.output.write_text(
         json.dumps(response, indent=2),
@@ -144,10 +158,74 @@ def _browse(args: argparse.Namespace) -> int:
     print(f"Retrieved {item_count} active listing(s).")
     print(f"Saved raw Browse API response to {args.output}")
     if args.draft_csv:
-        draft_count = write_browse_listing_draft(args.draft_csv, response)
+        eligible_summaries = (
+            [
+                summary
+                for summary in summaries
+                if (
+                    isinstance(summary, dict)
+                    and is_browse_condition_eligible(
+                        summary.get("condition")
+                    )
+                )
+            ]
+            if isinstance(summaries, list)
+            else []
+        )
+        draft_response = response
+        if eligible_summaries:
+            description_response = client.add_item_descriptions(
+                {**response, "itemSummaries": eligible_summaries},
+                marketplace=args.marketplace,
+            )
+            described_summaries = description_response.get(
+                "itemSummaries", []
+            )
+            descriptions_by_id = {
+                summary["itemId"]: summary
+                for summary in described_summaries
+                if (
+                    isinstance(summary, dict)
+                    and isinstance(summary.get("itemId"), str)
+                )
+            } if isinstance(described_summaries, list) else {}
+            draft_response = {
+                **response,
+                "itemSummaries": [
+                    {
+                        **summary,
+                        **descriptions_by_id.get(
+                            summary.get("itemId"), {}
+                        ),
+                    }
+                    if isinstance(summary, dict)
+                    else summary
+                    for summary in summaries
+                ],
+            }
+        draft_count = write_browse_listing_draft(
+            args.draft_csv,
+            draft_response,
+        )
+        summaries = draft_response.get("itemSummaries", [])
+        description_count = (
+            sum(
+                isinstance(summary, dict)
+                and summary.get("listingDescriptionStatus") == "available"
+                for summary in summaries
+            )
+            if isinstance(summaries, list)
+            else 0
+        )
         print(
             f"Wrote {draft_count} listing(s) to review CSV "
             f"at {args.draft_csv}"
+        )
+        print(
+            f"Fetched descriptions for {description_count} of "
+            f"{len(eligible_summaries)} condition-eligible listing(s); "
+            f"skipped {draft_count - len(eligible_summaries)} other "
+            f"listing(s)."
         )
     return 0
 

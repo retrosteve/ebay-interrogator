@@ -24,7 +24,12 @@ class EbayBrowseClientTests(unittest.TestCase):
             environment="sandbox",
         )
 
-        response = client.search_items("Switch OLED HEG-001", limit=10)
+        response = client.search_items(
+            "Switch OLED HEG-001",
+            limit=10,
+            category_id="139971",
+            sort="price",
+        )
 
         self.assertEqual(response["total"], 1)
         token_request = mock_urlopen.call_args_list[0].args[0]
@@ -52,6 +57,8 @@ class EbayBrowseClientTests(unittest.TestCase):
         )
         search_params = parse_qs(urlparse(search_request.full_url).query)
         self.assertEqual(search_params["q"], ["Switch OLED HEG-001"])
+        self.assertEqual(search_params["category_ids"], ["139971"])
+        self.assertEqual(search_params["sort"], ["price"])
         self.assertEqual(
             search_request.get_header("Authorization"),
             "Bearer sandbox-token",
@@ -64,6 +71,85 @@ class EbayBrowseClientTests(unittest.TestCase):
     def test_requires_credentials(self) -> None:
         with self.assertRaisesRegex(EbayApiError, "EBAY_CLIENT_ID"):
             EbayBrowseClient("", "", environment="sandbox")
+
+    @patch("ebay_interrogator.ebay_api.urlopen")
+    def test_adds_item_descriptions_using_encoded_ids_and_shared_token(
+        self,
+        mock_urlopen,
+    ) -> None:
+        mock_urlopen.side_effect = [
+            BytesIO(b'{"access_token":"sandbox-token"}'),
+            BytesIO(b'{"description":"Dock included"}'),
+        ]
+        client = EbayBrowseClient(
+            "test-client-id",
+            "test-client-secret",
+            environment="sandbox",
+        )
+        response = {
+            "itemSummaries": [
+                {"itemId": "v1|123|0", "title": "Switch OLED"}
+            ]
+        }
+
+        enriched = client.add_item_descriptions(response)
+
+        self.assertEqual(
+            enriched["itemSummaries"][0]["listingDescription"],
+            "Dock included",
+        )
+        self.assertEqual(
+            enriched["itemSummaries"][0]["listingDescriptionStatus"],
+            "available",
+        )
+        request = mock_urlopen.call_args_list[1].args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://api.sandbox.ebay.com/buy/browse/v1/item/v1%7C123%7C0",
+        )
+        self.assertEqual(
+            request.get_header("Authorization"), "Bearer sandbox-token"
+        )
+        self.assertEqual(
+            request.get_header("X-ebay-c-marketplace-id"), "EBAY_GB"
+        )
+
+    @patch("ebay_interrogator.ebay_api.urlopen")
+    def test_unavailable_item_description_does_not_drop_search_result(
+        self,
+        mock_urlopen,
+    ) -> None:
+        mock_urlopen.side_effect = [
+            BytesIO(b'{"access_token":"sandbox-token"}'),
+            HTTPError(
+                "https://api.sandbox.ebay.com/buy/browse/v1/item/v1%7C123%7C0",
+                404,
+                "Not Found",
+                {},
+                BytesIO(b""),
+            ),
+        ]
+        client = EbayBrowseClient(
+            "test-client-id",
+            "test-client-secret",
+            environment="sandbox",
+        )
+        response = {
+            "itemSummaries": [
+                {"itemId": "v1|123|0", "title": "Switch OLED"}
+            ]
+        }
+
+        enriched = client.add_item_descriptions(response)
+
+        self.assertEqual(
+            enriched["itemSummaries"][0]["listingDescriptionStatus"],
+            "unavailable",
+        )
+        self.assertEqual(
+            enriched["itemSummaries"][0]["title"], "Switch OLED"
+        )
+        self.assertNotIn("listingDescription", response["itemSummaries"][0])
 
     def test_reports_http_errors_without_exposing_credentials(self) -> None:
         client = EbayBrowseClient("client-id", "client-secret")

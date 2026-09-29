@@ -62,8 +62,10 @@
                 "browse",
                 "--environment", "production",
                 "--marketplace", "EBAY_GB",
+                "--category-id", "139971",
+                "--sort", "price",
                 "--query", "${input:browseQuery}",
-                "--limit", "20",
+                "--limit", "200",
                 "--output", "${workspaceFolder}/active-listings-production.json",
                 "--draft-csv", "${workspaceFolder}/active-listings-production-draft.csv"
             ],

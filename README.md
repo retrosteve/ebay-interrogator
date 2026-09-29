@@ -73,18 +73,44 @@ It requests up to 20 active eBay UK results and writes the raw response to
 `active-listings-draft.csv`, an ignored manual-review draft.
 
 The draft maps listing ID, title, URL, condition, and unambiguous GBP price and
-shipping values. It leaves model, bundle contents, and working status blank
-because the Browse response does not verify them. Non-GBP prices and ambiguous
-shipping options are also left blank. Review and complete those fields before
-using the draft with `scan`; the scanner rejects incomplete rows. The Browse API
-integration uses application OAuth credentials from the launch prompt and makes
-no request until you start this profile.
+shipping values. It adds `browse_category_id`, `triage_status`,
+`triage_signals`, `description_status`, and `description_signals`. When a draft
+CSV is requested, the command also fetches the seller-written description for
+each result using the read-only Browse item endpoint, up to one additional
+request per result. HTML is stripped for analysis; concise clues go into the
+CSV rather than the full description. Rules flag explicit missing components,
+bundle-only wording, and common power, screen, control, heat, liquid, or online
+fault claims as `excluded`. This is phrase-based screening, not a semantic
+review: wording may be missed or misinterpreted. Explicit wear or cosmetic
+defects and missing standard bundle items (dock, charger, Joy-Cons, HDMI cable,
+or Joy-Con grip/straps) are screened out. Box mentions are preference signals,
+not hard exclusions. Description mentions of included components or working
+condition are evidence only, not confirmation. All other results are
+`verification_needed`, not deal recommendations. Verify the HEG-001 model,
+condition, original accessories, and working condition before adding a listing
+to the scanner's active-listings CSV. Browse triage only allows condition
+statuses `New`, `Like New`, and `Open box`/`opened - never used`; other used,
+missing, or unfamiliar statuses are excluded. The draft also includes `quality_score`
+and `quality_signals`: a 0-100 ranking of positive seller evidence for
+condition, included accessories, original box, and tested/working claims.
+Excluded listings are not scored. The score is not a probability, condition
+verification, or profit estimate; unsupported claims and missing information
+do not prove good condition or a complete bundle.
+
+The draft may prefill model from category and title evidence, but that is only a
+hint to verify. Bundle contents and working status remain blank. Non-GBP prices
+and ambiguous shipping options are also left blank. The scanner rejects
+incomplete rows. The Browse API integration uses application OAuth credentials
+from the launch prompt and makes no request until you start this profile.
 
 For live inventory, first ensure your Production keyset is enabled for the Browse
 API. Then use **eBay Interrogator: Browse Production (read-only)** and enter the
 Production Client ID and masked Client Secret at its prompts. This profile makes
-only authentication and Browse search requests; it does not create or change
-listings. It writes `active-listings-production.json` and
+authentication and Browse search requests, plus read-only item-detail requests
+when a draft CSV is requested; it does not create or change listings. It limits
+results to eBay UK category `139971` (Video Game Consoles)
+and sorts by lowest item-plus-shipping cost first, based on eBay's shipping
+estimate. It writes `active-listings-production.json` and
 `active-listings-production-draft.csv`, both ignored by Git. Do not enter
 Production keys into the Sandbox profile.
 
